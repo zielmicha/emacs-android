@@ -1,0 +1,5 @@
+if [ "$TOOLCHAIN" = "" ]; then
+   TOOLCHAIN=~/standalone-toolchain/
+fi
+export PATH=$PATH:$TOOLCHAIN/bin
+make -f android.mk $* CC=arm-linux-androideabi-gcc

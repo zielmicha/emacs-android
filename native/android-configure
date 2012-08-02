@@ -1,0 +1,20 @@
+#!/bin/bash
+shopt -s lastpipe
+lines="$(cat android-configure-list | while read line; do echo emacs-src/$line; done; cat android-configure-list-tinfo)"
+all=""
+for line in $lines; do
+    all="$all build/$line"
+    bname=$(dirname $line)/$(basename $line .o)
+    echo -e "build/$bname.o: $bname.c"
+    echo -e "\t\$(CC) -std=gnu99 -Demacs -O2 -c -I. -Iemacs-src/src -Iemacs-src/lib -Itinfo/include -Iemacs-headers $bname.c -o build/$bname.o "
+done > .android.mk.tmp
+
+exec > android.mk
+echo -e "CC=gcc"
+echo -e "all: build/emacs.bin"
+echo -e "clean:"
+echo -e "\trm -rf build"
+echo -e "build/emacs.bin: $all"
+echo -e "\t\$(CC) build/emacs-src/lib/*.o build/emacs-src/src/*.o build/tinfo/*.o -o build/emacs.bin -ldl -lm"
+cat .android.mk.tmp
+rm .android.mk.tmp
