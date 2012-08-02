@@ -1,65 +1,12 @@
 #!/bin/bash
 
-if [ "$RANDOM" = "" ]; then
-    echo "Run this script with bash, not sh".
-    exit 1
-fi
+source build-util.inc || exit 1
 
 if [ ! -d emacs-src/.git ]; then
     echo "Execute:"
     echo "git clone http://github.com/zielmicha/emacs.git emacs-src"
     exit 1
 fi
-
-check() {
-    $* || exit
-}
-
-skip() {
-    $* 2>/dev/null
-}
-
-trimout() {
-    ($* 2>&1; echo $?>"$base/.success") | tee -a "$base/build.log" | (curr=0; while read line; do
-        i=$[curr%7]
-        [ $i = 0 ] && ch='|'
-        [ $i = 1 ] && ch='/'
-        [ $i = 2 ] && ch='-'
-        [ $i = 3 ] && ch='\'
-        [ $i = 4 ] && ch='/'
-        [ $i = 5 ] && ch='-'
-        [ $i = 6 ] && ch='\'
-        printf "\b%s" $ch
-        curr=$[curr+1]
-    done)
-    return $(cat "$base/.success"; rm "$base/.success")
-}
-
-die() {
-    cd "$base"
-    echo
-    echo -e "${RED}Here is \`tail build.log\`:$NORMAL"
-    tail build.log
-    echo -e "${RED}Build failed. See build.log for details.$NORMAL" >&2
-    exit 1
-}
-
-end_progress() {
-    echo -e "\bdone"
-}
-
-NORMAL="\033[0m"
-RED="\033[31;1m"
-GREEN="\033[32;1m"
-BLUE="\033[34;1m"
-YELLOW="\033[33;1m"
-WHITE="\033[37;1m"
-AAA="\033[01;32m"
-
-
-progress() {
-    printf "$GREEN%s$NORMAL...  " "$1"
-}
 
 export base="$(pwd)"
 
@@ -68,6 +15,11 @@ export base="$(pwd)"
 skip mkdir -p build/emacs-src/lib
 skip mkdir -p build/emacs-src/src
 skip mkdir -p build/tinfo
+
+echo "Building Emacs for Android."
+echo " * more detailed log: build.log"
+echo " * to start from begining remove build/ and android.mk"
+echo
 
 progress '1) Building Android Emacs'
 
@@ -83,7 +35,7 @@ echo
 
 build_confirm_path=build/host/emacs_built
 if [ -f $build_confirm_path ]; then
-    echo "  already built - to rebuilt delete $build_confirm_path"
+    echo "  already built - to rebuild delete $build_confirm_path"
 else
     progress "  copying Emacs source"
 
@@ -106,5 +58,34 @@ else
     trimout make -j4 || die
     end_progress
 
+    cd ../..
+
     touch $build_confirm_path
 fi
+
+progress "3) Finishing"
+echo
+
+if [ ! -f "build/busybox-arm" ]; then
+    progress "  downloading BusyBox binary"
+    trimout wget --progress=dot http://busybox.net/downloads/binaries/1.19.0/busybox-armv5l -o build/busybox-arm || die
+    end_progress
+else
+    echo "  BusyBox binary aleardy downloaded"
+fi
+
+progress "  packaging Lisp modules"
+cd build/host || die
+trimout tar cvzf ../lisp.tgz lisp || die
+end_progress
+cd ../..
+
+progress "  packaging etc"
+cd emacs-src || die
+trimout tar cvzf ../build/etc.tgz etc || die
+end_progress
+cd ..
+
+progress "  packaging terminfo"
+trimout tar czvf build/terminfo.tgz terminfo || doe
+end_progress
