@@ -51,10 +51,17 @@ class Terminal:
         while True:
             r, w, x = select.select([self.stdout_fd],
                                     [self.stdin_fd] if self.out_buff else [],
-                                    [], 0.02)
+                                    [self.stdout_fd, self.stdin_fd],
+                                    0.02)
+
+            if x:
+                raise SystemExit
 
             if r:
-                in_buff.append(os.read(self.stdout_fd, 1))
+                data = os.read(self.stdout_fd, 1)
+                if not data:
+                    raise SystemExit
+                in_buff.append(data)
 
             #print repr(self.out_buff), r, w, repr(in_buff)
             if w:
@@ -90,11 +97,19 @@ class Terminal:
         for ev in pygame.event.get():
             if ev.type == pygame.KEYDOWN:
                 self.handle_key(ev)
+            elif ev.type == pygame.KEYUP:
+                self.handle_keyup(ev)
         pygame.display.flip()
 
     def handle_key(self, ev):
+        e = '\x1b'
+        app = 'O' if self.screen.app_mode else '['
         mapping = {pygame.K_BACKSPACE: '\b',
-                   pygame.K_RETURN: '\n',
+                   pygame.K_RETURN: '\r',
+                   pygame.K_UP: e + app + 'A',
+                   pygame.K_DOWN: e + app + 'B',
+                   pygame.K_RIGHT: e + app + 'C',
+                   pygame.K_LEFT: e + app + 'D',
                    }
 
         if ev.key in mapping:
@@ -103,7 +118,20 @@ class Terminal:
         elif ev.unicode:
             self.write(ev.unicode.encode('utf8'))
 
+    def handle_keyup(self, ev):
+        e = '\x1b'
+        mapping = {};{ pygame.K_UP: e + 'OA',
+                   pygame.K_DOWN: e + 'OB',
+                   pygame.K_RIGHT: e + 'OC',
+                   pygame.K_LEFT: e + 'OD',
+                   pygame.K_RETURN: e + 'OM',
+                   }
+
+        if ev.key in mapping:
+            self.write(mapping[ev.key])
+
     def write(self, w):
+        print repr(w)
         self.out_buff += w
 
 class Screen:
@@ -114,8 +142,10 @@ class Screen:
         self.y = 0
         self.saved_pos = (0, 0)
         self.decoder = codecs.getincrementaldecoder('utf8')('replace')
-        self._data = [ [ Character() for i in xrange(self.cols) ] for i in xrange(self.rows) ]
+        self._data = [
+            [ Character() for i in xrange(self.cols) ] for i in xrange(self.rows) ]
         self.style = Character()
+        self.app_mode = False
 
     def add(self, data):
         reader = StringReader(data)
@@ -161,6 +191,7 @@ class Screen:
             data = self.decoder.decode(ch)
 
             for ch in data:
+                #print ch,
                 self.append(ch)
 
     def _handle_escape(self, r):
@@ -206,7 +237,8 @@ class Screen:
             n = _int(data)
             self.scroll(-n)
         elif ch == 'm':
-            self.set_sgr(data)
+            for code in data.split(';'):
+                self.set_sgr(code)
         elif ch == 'n':
             self.report_position()
         elif ch == 's':
@@ -217,11 +249,15 @@ class Screen:
         elif ch == 'l':
             if data == '7':
                 print 'disable wrap'
+            elif data == '?1':
+                self.app_mode = False
             else:
                 print >>sys.stderr, 'unknown "l" code', repr(data)
         elif ch == 'h':
             if data == '7':
                 print 'enable wrap'
+            elif data == '?1':
+                self.app_mode = True
             else:
                 print >>sys.stderr, 'unknown "h" code', repr(data)
         else:
@@ -240,13 +276,13 @@ class Screen:
 
     def clear(self, option=2, line=False):
         self._normalize()
-        if option == 0:
+        if option == 1:
             for i in xrange(self.x, self.cols):
                 self._data[self.y][i].ch = ' '
             if not line:
                 for i in xrange(self.y, self.rows):
                     self.clear_line(i)
-        elif option == 1:
+        elif option == 0:
             for i in xrange(self.x):
                 self._data[self.y][i].ch = ' '
             if not line:
@@ -259,16 +295,12 @@ class Screen:
                 for i in xrange(self.rows):
                     self.clear_line(i)
 
-
     def clear_line(self, y):
         for i in xrange(self.cols):
             self._data[y][i].ch = ' '
 
-    def set_sgr(self, data):
-        if ';' not in data: data += ';'
-        code, param = data.split(';', 1)
+    def set_sgr(self, code):
         code = _int(code)
-        param = _int(param)
 
         if code == 0:
             self.style.copy_style(Character())
@@ -280,11 +312,12 @@ class Screen:
             self.style.negative = False
         elif code in range(30, 38):
             self.style.fg = code - 30
-            self.style.bold = param
         elif code == 39:
             self.style.fg = Character().fg
         elif code in range(40, 48):
             self.style.bg = code - 40
+        else:
+            print 'unknown sgr', code
 
     def ring(self):
         pass # drrr!

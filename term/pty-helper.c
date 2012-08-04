@@ -22,20 +22,31 @@ int main(int argc, char** argv) {
     while(1) {
       fd_set rfds;
       fd_set wfds;
+      fd_set xfds;
       FD_ZERO(&rfds);
       FD_ZERO(&wfds);
       FD_SET(master, &rfds);
-      //FD_SET(master, &wfds);
+      FD_SET(master, &xfds);
       FD_SET(0, &rfds);
-      //FD_SET(1, &wfds);
-      select(master + 1, &rfds, &wfds, NULL, NULL);
+      if(select(master + 1, &rfds, &wfds, &xfds, NULL) == -1) {
+        perror("select");
+        exit(1);
+      }
       if(FD_ISSET(0, &rfds)) {
-        if(!read(0, buff, 1)) exit(3);
+        if(!read(0, buff, 1)) exit(0);
         write(master, buff, 1);
       }
       if(FD_ISSET(master, &rfds)) {
-        if(!read(master, buff, 1)) exit(2);
+        if(!read(master, buff, 1)) exit(0);
         write(1, buff, 1);
+      }
+      if(FD_ISSET(master, &xfds)) {
+        exit(0);
+      }
+      int status = 0;
+
+      if(waitpid(-1, &status, WNOHANG) > 0) {
+        exit(0);
       }
     }
   } else {
