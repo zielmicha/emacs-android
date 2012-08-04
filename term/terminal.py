@@ -14,9 +14,13 @@ class Terminal:
         self.surf = None
         self.cols = 160
         self.rows = 40
-        self.char_h = 12
-        self.char_w = self.char_h * 13 // 20
+        self.char_h = 15
+        self.char_w = self.char_h * 14 // 20
         self.screen = Screen(self.rows, self.cols)
+
+        self.is_alt = False
+        self.is_ctrl = False
+        self.is_shift = False
 
     def main(self):
         self.init_subprocess()
@@ -79,6 +83,7 @@ class Terminal:
             self.in_buff = self.screen.add(self.in_buff)
 
     def tick_window(self):
+        self.surf.fill((0, 0, 0))
         for y, row in enumerate(self.screen):
             for x, char in enumerate(row):
                 surf = self.font.render(char.ch, True,
@@ -96,39 +101,53 @@ class Terminal:
 
         for ev in pygame.event.get():
             if ev.type == pygame.KEYDOWN:
+                self.handle_modifier(ev.key, True)
                 self.handle_key(ev)
             elif ev.type == pygame.KEYUP:
-                self.handle_keyup(ev)
+                self.handle_modifier(ev.key, False)
         pygame.display.flip()
 
     def handle_key(self, ev):
+        ALPHA = 'abcdefghijklmnopqrstuwvwxyz'
+        ALPHA_MAPPING = dict( (getattr(pygame, 'K_' + v), v) for v in ALPHA )
         e = '\x1b'
         app = 'O' if self.screen.app_mode else '['
-        mapping = {pygame.K_BACKSPACE: '\b',
+        MAPPING = {pygame.K_BACKSPACE: '\x7f',
                    pygame.K_RETURN: '\r',
                    pygame.K_UP: e + app + 'A',
                    pygame.K_DOWN: e + app + 'B',
                    pygame.K_RIGHT: e + app + 'C',
                    pygame.K_LEFT: e + app + 'D',
+                   pygame.K_RALT: e + 'OP',
                    }
 
-        if ev.key in mapping:
-            self.write(mapping[ev.key])
+        if ev.key in ALPHA_MAPPING:
+            ch = ALPHA_MAPPING[ev.key]
+            if self.is_ctrl:
+                self.write(chr(ord(ch) - 0x60))
+            elif self.is_shift:
+                self.write(ch.upper())
+            elif self.is_alt:
+                self.write('\x1b' + ch)
+            else:
+                self.write(ch)
+
+        elif ev.key in MAPPING:
+            self.write(MAPPING[ev.key])
 
         elif ev.unicode:
             self.write(ev.unicode.encode('utf8'))
 
-    def handle_keyup(self, ev):
-        e = '\x1b'
-        mapping = {};{ pygame.K_UP: e + 'OA',
-                   pygame.K_DOWN: e + 'OB',
-                   pygame.K_RIGHT: e + 'OC',
-                   pygame.K_LEFT: e + 'OD',
-                   pygame.K_RETURN: e + 'OM',
-                   }
-
-        if ev.key in mapping:
-            self.write(mapping[ev.key])
+    def handle_modifier(self, keycode, state):
+        if keycode in (pygame.K_RALT, pygame.K_LALT):
+            self.is_alt = state
+            print 'alt', 'on' if state else 'off'
+        elif keycode in (pygame.K_RCTRL, pygame.K_LCTRL):
+            self.is_ctrl = state
+        elif keycode in (pygame.K_RSHIFT, pygame.K_LSHIFT):
+            self.is_shift = state
+        else:
+            return
 
     def write(self, w):
         print repr(w)
