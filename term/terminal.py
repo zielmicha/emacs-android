@@ -67,7 +67,6 @@ class Terminal:
                     raise SystemExit
                 in_buff.append(data)
 
-            #print repr(self.out_buff), r, w, repr(in_buff)
             if w:
                 os.write(self.stdin_fd, self.out_buff)
                 self.out_buff = ''
@@ -76,7 +75,6 @@ class Terminal:
                 break
 
         self.in_buff = ''.join(in_buff)
-        #print 'read', repr(self.in_buff)
 
     def tick_term(self):
         if self.in_buff:
@@ -123,6 +121,7 @@ class Terminal:
 
         if ev.key in ALPHA_MAPPING:
             ch = ALPHA_MAPPING[ev.key]
+
             if self.is_ctrl:
                 self.write(chr(ord(ch) - 0x60))
             elif self.is_shift:
@@ -141,7 +140,6 @@ class Terminal:
     def handle_modifier(self, keycode, state):
         if keycode in (pygame.K_RALT, pygame.K_LALT):
             self.is_alt = state
-            print 'alt', 'on' if state else 'off'
         elif keycode in (pygame.K_RCTRL, pygame.K_LCTRL):
             self.is_ctrl = state
         elif keycode in (pygame.K_RSHIFT, pygame.K_LSHIFT):
@@ -150,7 +148,6 @@ class Terminal:
             return
 
     def write(self, w):
-        print repr(w)
         self.out_buff += w
 
 class Screen:
@@ -183,13 +180,19 @@ class Screen:
     def _handle(self, r):
         ch = r.next()
         if ch == '\n':
-            self.x = 0
-        elif ch == '\r':
             self.y += 1
+        elif ch == '\r':
+            self.x = 0
         elif ch == '\b':
             self.x -= 1
         elif ch == '\a':
             self.ring()
+        elif ch == '\t':
+            if self.x % 8 == 0:
+                self.x += 1
+            self.x = (self.x // 8) * 8 + 8
+        elif ch == '\v':
+            print 'vertical tab is not supported'
         elif ch == '\x1B':
             ch = r.next()
             if ch == '[':
@@ -210,7 +213,6 @@ class Screen:
             data = self.decoder.decode(ch)
 
             for ch in data:
-                #print ch,
                 self.append(ch)
 
     def _handle_escape(self, r):
