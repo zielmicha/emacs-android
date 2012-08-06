@@ -2,16 +2,34 @@
 import terminal
 import os
 import pygame
+import time
+import android
+
+keymap = {
+    57: pygame.K_LALT,
+    58: pygame.K_RALT,
+    113: pygame.K_LCTRL,
+    114: pygame.K_RCTRL,
+}
 
 def main():
+    for k, v in keymap.items():
+        print 'map', k, v
+        android.map_key(k, v)
     private = get_private_data_path()
     t = terminal.Terminal()
     pty_helper = private + '/pty-helper'
+    busybox = private + '/busybox'
     os.chmod(pty_helper, 0o755)
+    os.chmod(busybox, 0o755)
+
+    os.environ['BUSYBOX'] = busybox
+    os.environ['PRIVATE'] = private
+    os.environ['PUBLIC'] = os.path.dirname(os.path.abspath(__file__))
 
     t.init_graphics()
     set_mode(t)
-    t.init_subprocess(['/system/bin/sh'], pty_helper)
+    t.init_subprocess([busybox, 'sh', 'init.sh'], pty_helper)
 
     while True:
         t.tick()

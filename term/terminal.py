@@ -1,3 +1,4 @@
+#!/usr/bin/python
 import pygame
 import subprocess
 import sys
@@ -7,6 +8,8 @@ import time
 import StringIO
 import codecs
 
+pygame_reverse = dict( (v, k) for k, v in pygame.__dict__.items() if k.startswith('K_') )
+
 class Terminal:
     def __init__(self):
         self.in_buff = ''
@@ -14,9 +17,9 @@ class Terminal:
         self.surf = None
         self.cols = 160
         self.rows = 40
-        self.char_h = 15
+        self.char_h = 17
         self.char_w = self.char_h * 14 // 20
-        self.screen = Screen(self.rows, self.cols)
+        self.screen = Screen(self.rows, self.cols, self.write)
 
         self.is_alt = False
         self.is_ctrl = False
@@ -32,7 +35,7 @@ class Terminal:
     def init_graphics(self):
         pygame.init()
         pygame.key.set_repeat(100, 50)
-        self.font = pygame.font.Font('FreeMono.ttf', self.char_h + 1)
+        self.font = pygame.font.Font('FreeMono.ttf', self.char_h - 1)
 
     def init_window(self):
         self.surf = pygame.display.set_mode((self.cols * self.char_w, self.rows * self.char_h))
@@ -56,10 +59,13 @@ class Terminal:
         start = time.time()
         in_buff = [self.in_buff]
         while True:
+            time_left = 0.02 - (time.time() - start)
+            if time_left < 0:
+                break
             r, w, x = select.select([self.stdout_fd],
                                     [self.stdin_fd] if self.out_buff else [],
                                     [self.stdout_fd, self.stdin_fd],
-                                    0.02)
+                                    max(0, time_left))
 
             if x:
                 raise SystemExit
@@ -74,9 +80,6 @@ class Terminal:
                 os.write(self.stdin_fd, self.out_buff)
                 self.out_buff = ''
 
-            if not r:
-                break
-
         self.in_buff = ''.join(in_buff)
 
     def tick_term(self):
@@ -84,8 +87,11 @@ class Terminal:
             self.in_buff = self.screen.add(self.in_buff)
 
     def tick_window(self):
-        self.surf.fill((0, 0, 0))
-        for y, row in enumerate(self.screen):
+        #self.screen.lines_updated
+        if len(self.screen.lines_updated) > 5:
+            print 'many lines updated'
+        for y in self.screen.lines_updated:
+            row = self.screen._data[y]
             for x, char in enumerate(row):
                 bg_color = get_color(char.bg)
                 surf = self.font.render(char.ch, True,
@@ -94,8 +100,10 @@ class Terminal:
                 self.surf.fill(bg_color, (self.char_w * x, self.char_h * y, self.char_w, self.char_h))
                 self.surf.blit(surf, (self.char_w * x, self.char_h * y))
 
+        self.screen.lines_updated = set([self.screen.y])
+
         cursor_color = self.screen._data[self.screen.y][self.screen.x].fg
-        #print get_color(cursor_color), self.screen.x, self.screen.y
+
         pygame.draw.rect(self.surf,
                          get_color(cursor_color),
                          (self.char_w * self.screen.x, self.char_h * self.screen.y,
@@ -111,8 +119,16 @@ class Terminal:
         pygame.display.flip()
 
     def handle_key(self, ev):
+        if self.screen.get_key_code_mode:
+            self.write('%d %s\n' % (ev.key, pygame_reverse.get(ev.key, 'unknown')))
+            self.screen.get_key_code_mode = False
+            return
+
         ALPHA = 'abcdefghijklmnopqrstuwvwxyz'
         ALPHA_MAPPING = dict( (getattr(pygame, 'K_' + v), v) for v in ALPHA )
+        NUMBERS  = '1234567890'
+        NUMBERS_MAPPING = dict( (getattr(pygame, 'K_' + v), v) for v in NUMBERS )
+        NUMSHIFT = '!@#$%^&*()'
         e = '\x1b'
         app = 'O' if self.screen.app_mode else '['
         MAPPING = {pygame.K_BACKSPACE: '\x7f',
@@ -125,6 +141,19 @@ class Terminal:
                    pygame.K_PAGEDOWN: e + '[6~',
                    pygame.K_END: e + 'OF',
                    pygame.K_HOME: e + 'OH',
+                   pygame.K_TAB: '\t',
+                   pygame.K_SPACE: ' ',
+                   pygame.K_SLASH: ('/', '?'),
+                   pygame.K_BACKSLASH: ('\\', '|'),
+                   pygame.K_PERIOD: ('.', '>'),
+                   pygame.K_COMMA: (',', '<'),
+                   pygame.K_KP_MINUS: ('-', '_'),
+                   pygame.K_MINUS: ('-', '_'),
+                   pygame.K_EQUALS: ('=', '+'),
+                   pygame.K_SEMICOLON: (';', ':'),
+                   pygame.K_QUOTE: ('\'', '"'),
+                   pygame.K_LEFTBRACKET: ('[', '{'),
+                   pygame.K_RIGHTBRACKET: (']', '}'),
                    }
 
         if ev.key in ALPHA_MAPPING:
@@ -139,11 +168,23 @@ class Terminal:
             else:
                 self.write(ch)
 
-        elif ev.key in MAPPING:
-            self.write(MAPPING[ev.key])
+        elif ev.key in NUMBERS_MAPPING:
+            ch = NUMBERS_MAPPING[ev.key]
+            if self.is_shift:
+                self.write(NUMSHIFT[NUMBERS.index(ch)])
+            else:
+                self.write(ch)
 
-        elif ev.unicode:
-            self.write(ev.unicode.encode('utf8'))
+        elif ev.key in MAPPING:
+            thing = MAPPING[ev.key]
+            if type(thing) == tuple:
+                ch = thing[1] if self.is_shift else thing[0]
+            else:
+                ch = thing
+            self.write(ch)
+
+        #elif ev.unicode:
+        #    self.write(ev.unicode.encode('utf8'))
 
     def handle_modifier(self, keycode, state):
         if keycode in (pygame.K_RALT, pygame.K_LALT):
@@ -156,10 +197,11 @@ class Terminal:
             return
 
     def write(self, w):
+        print time.time(), 'send', repr(w)
         self.out_buff += w
 
 class Screen:
-    def __init__(self, rows, cols):
+    def __init__(self, rows, cols, write_callback):
         self.rows = rows
         self.cols = cols
         self.x = 0
@@ -172,6 +214,9 @@ class Screen:
             [ Character() for i in xrange(self.cols) ] for i in xrange(self.rows) ]
         self.style = Character()
         self.app_mode = False
+        self.get_key_code_mode = False
+        self.write_callback = write_callback
+        self.lines_updated = set()
 
     def add(self, data):
         reader = StringReader(data)
@@ -181,6 +226,7 @@ class Screen:
                     self._handle(reader)
                 except ValueError as err:
                     print >>sys.stderr, err
+                print time.time(), 'put', repr(reader.s[reader._breakpoint:reader.i])
                 reader.put_breakpoint()
         except StopIteration:
             pass
@@ -259,11 +305,12 @@ class Screen:
             a, b = data.split(';', 1)
             self.x = _int(b) - 1
             self.y = _int(a) - 1
+            self.lines_updated.add(self.y)
         elif ch == 'J':
-            n = _int(data)
+            n = _int(data, default=0)
             self.clear(option=n, line=False)
         elif ch == 'K':
-            n = _int(data)
+            n = _int(data, default=0)
             self.clear(option=n, line=True)
         elif ch == 'S':
             n = _int(data)
@@ -275,7 +322,8 @@ class Screen:
             for code in data.split(';'):
                 self.set_sgr(code)
         elif ch == 'n':
-            self.report_position()
+            # report position
+            self.write_callback('\x1b[%d;%dR' % (self.y + 1, self.x + 1))
         elif ch == 's':
             self.saved_pos = (self.x, self.y)
         elif ch == 'u':
@@ -292,6 +340,9 @@ class Screen:
                 pass # flash
             elif data == '34':
                 pass # ???
+            elif data == '?10000020': # private terminal.py escape sequence
+                # enable get key code mode
+                self.get_key_code_mode = True
             else:
                 print >>sys.stderr, 'unknown "l" code', repr(data)
         elif ch == 'h':
@@ -312,11 +363,13 @@ class Screen:
                 line = self._data[self.y]
                 char = line.pop()
                 line.insert(self.x + 1, Character())
+            self.lines_updated.add(self.y)
         elif ch == 'L':
             for i in xrange(_int(data)):
                 self.clear_line(self.scroll_end)
                 line = self._data.pop(self.scroll_end)
                 self._data.insert(self.y + 1, line)
+            self._all_updated()
         elif ch == 'r':
             if not data:
                 start, end = 0, self.rows - 1
@@ -329,11 +382,13 @@ class Screen:
                 self.clear_line(self.y)
                 line = self._data.pop(self.y)
                 self._data.insert(self.scroll_end, line)
+            self._all_updated()
         elif ch == 'P':
             for i in xrange(_int(data)):
                 line = self._data[self.y]
                 char = line.pop(self.x)
                 line.append(Character())
+            self.lines_updated.add(self.y)
         else:
             print >>sys.stderr, 'unsupported code', repr(ch), repr(data)
 
@@ -350,15 +405,17 @@ class Screen:
 
     def clear(self, option=2, line=False):
         self._normalize()
-        if option == 1:
+        if option == 0:
             for i in xrange(self.x, self.cols):
                 self._data[self.y][i].reset()
+            self.lines_updated.add(self.y)
             if not line:
-                for i in xrange(self.y, self.rows):
+                for i in xrange(self.y + 1, self.rows):
                     self.clear_line(i)
-        elif option == 0:
+        elif option == 1:
             for i in xrange(self.x):
                 self._data[self.y][i].reset()
+            self.lines_updated.add(self.y)
             if not line:
                 for i in xrange(self.y):
                     self.clear_line(i)
@@ -372,6 +429,7 @@ class Screen:
     def clear_line(self, y):
         for i in xrange(self.cols):
             self._data[y][i].reset()
+        self.lines_updated.add(y)
 
     def set_sgr(self, code):
         code = _int(code)
@@ -412,6 +470,8 @@ class Screen:
         char.copy_style(self.style)
         self.x += 1
 
+        self.lines_updated.add(self.y)
+
     def scroll(self, n=1):
         if n > 0:
             for i in xrange(n):
@@ -423,6 +483,7 @@ class Screen:
                 self.clear_line(self.scroll_end)
                 last_line = self._data.pop(self.scroll_end)
                 self._data.insert(self.scroll_start, last_line)
+        self._all_updated()
 
     def _normalize(self):
         if self.y < 0:
@@ -452,6 +513,8 @@ class Screen:
         if self.scroll_end < self.scroll_start:
             self.scroll_end = self.scroll_start
 
+    def _all_updated(self):
+        self.lines_updated = set(range(self.rows))
 
     def __iter__(self):
         return iter(self._data)
@@ -504,9 +567,9 @@ def get_color(i, bold=False):
     else:
         return theme[1][i]
 
-def _int(v):
+def _int(v, default=1):
     if not v:
-        return 1
+        return default
     try:
         return int(v)
     except ValueError:
