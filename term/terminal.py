@@ -30,9 +30,9 @@ class Terminal:
 
     def init_window(self):
         pygame.init()
-        pygame.key.set_repeat(100, 100)
+        pygame.key.set_repeat(100, 50)
         self.surf = pygame.display.set_mode((self.cols * self.char_w, self.rows * self.char_h))
-        self.font = pygame.font.Font('FreeMono.ttf', self.char_h)
+        self.font = pygame.font.Font('FreeMono.ttf', self.char_h + 1)
 
     def init_subprocess(self):
         os.environ['COLS'] = str(self.cols)
@@ -84,9 +84,11 @@ class Terminal:
         self.surf.fill((0, 0, 0))
         for y, row in enumerate(self.screen):
             for x, char in enumerate(row):
+                bg_color = get_color(char.bg)
                 surf = self.font.render(char.ch, True,
                                         get_color(char.fg, char.bold),
-                                        get_color(char.bg))
+                                        bg_color)
+                self.surf.fill(bg_color, (self.char_w * x, self.char_h * y, self.char_w, self.char_h))
                 self.surf.blit(surf, (self.char_w * x, self.char_h * y))
 
         cursor_color = self.screen._data[self.screen.y][self.screen.x].fg
@@ -116,7 +118,10 @@ class Terminal:
                    pygame.K_DOWN: e + app + 'B',
                    pygame.K_RIGHT: e + app + 'C',
                    pygame.K_LEFT: e + app + 'D',
-                   pygame.K_RALT: e + 'OP',
+                   pygame.K_PAGEUP: e + '[5~',
+                   pygame.K_PAGEDOWN: e + '[6~',
+                   pygame.K_END: e + 'OF',
+                   pygame.K_HOME: e + 'OH',
                    }
 
         if ev.key in ALPHA_MAPPING:
@@ -157,6 +162,8 @@ class Screen:
         self.x = 0
         self.y = 0
         self.saved_pos = (0, 0)
+        self.scroll_start = 0
+        self.scroll_end = self.rows - 1
         self.decoder = codecs.getincrementaldecoder('utf8')('replace')
         self._data = [
             [ Character() for i in xrange(self.cols) ] for i in xrange(self.rows) ]
@@ -203,11 +210,15 @@ class Screen:
                 # reset
                 self.x, self.y = 0, 0
                 self.style.copy_style(Character())
+            elif ch == 'M':
+                self.scroll(n=-1)
+            elif ch == 'D':
+                self.scroll(n=1)
             elif ch in ('=', '>'):
                 pass # set alternate/numeric keypad
             else:
                 print >>sys.stderr, 'unknow escape', repr(ch)
-        elif ch == '\x0f':
+        elif ch in ('\x0f', '\0'):
             pass # skip?
         else:
             data = self.decoder.decode(ch)
@@ -226,7 +237,7 @@ class Screen:
         elif ch == 'C':
             n = _int(data)
             self.x += n
-        elif ch == 'D':
+        elif ch == 'D' or ch == 'd':
             n = _int(data)
             self.x += n
         elif ch == 'E':
@@ -272,6 +283,12 @@ class Screen:
                 print 'disable wrap'
             elif data == '?1':
                 self.app_mode = False
+            elif data in ('?25', '?12', '?12;25'):
+                pass # cursor hilite
+            elif data == '?5':
+                pass # flash
+            elif data == '34':
+                pass # ???
             else:
                 print >>sys.stderr, 'unknown "l" code', repr(data)
         elif ch == 'h':
@@ -279,8 +296,41 @@ class Screen:
                 print 'enable wrap'
             elif data == '?1':
                 self.app_mode = True
+            elif data in ('?25', '?12', '?12;25'):
+                pass # cursor hilite
+            elif data == '?5':
+                pass # flash
+            elif data == '34':
+                pass # ???
             else:
                 print >>sys.stderr, 'unknown "h" code', repr(data)
+        elif ch == '@':
+            for i in xrange(_int(data)):
+                line = self._data[self.y]
+                char = line.pop()
+                line.insert(self.x + 1, Character())
+        elif ch == 'L':
+            for i in xrange(_int(data)):
+                self.clear_line(self.scroll_end)
+                line = self._data.pop(self.scroll_end)
+                self._data.insert(self.y + 1, line)
+        elif ch == 'r':
+            if not data:
+                start, end = 0, self.rows - 1
+            else:
+                start, end = map(int, data.split(';'))
+            self.scroll_start = start - 1
+            self.scroll_end = end - 1
+        elif ch == 'M':
+            for i in xrange(_int(data)):
+                self.clear_line(self.y)
+                line = self._data.pop(self.y)
+                self._data.insert(self.scroll_end, line)
+        elif ch == 'P':
+            for i in xrange(_int(data)):
+                line = self._data[self.y]
+                char = line.pop(self.x)
+                line.append(Character())
         else:
             print >>sys.stderr, 'unsupported code', repr(ch), repr(data)
 
@@ -299,13 +349,13 @@ class Screen:
         self._normalize()
         if option == 1:
             for i in xrange(self.x, self.cols):
-                self._data[self.y][i].ch = ' '
+                self._data[self.y][i].reset()
             if not line:
                 for i in xrange(self.y, self.rows):
                     self.clear_line(i)
         elif option == 0:
             for i in xrange(self.x):
-                self._data[self.y][i].ch = ' '
+                self._data[self.y][i].reset()
             if not line:
                 for i in xrange(self.y):
                     self.clear_line(i)
@@ -318,7 +368,7 @@ class Screen:
 
     def clear_line(self, y):
         for i in xrange(self.cols):
-            self._data[y][i].ch = ' '
+            self._data[y][i].reset()
 
     def set_sgr(self, code):
         code = _int(code)
@@ -327,8 +377,14 @@ class Screen:
             self.style.copy_style(Character())
         elif code == 1:
             self.style.bold = True
+        elif code == 3:
+            pass # italic
+        elif code == 4:
+            pass # underline
         elif code == 7:
             self.style.negative = True
+        elif code == 23:
+            pass # disable italic
         elif code == 27:
             self.style.negative = False
         elif code in range(30, 38):
@@ -337,6 +393,8 @@ class Screen:
             self.style.fg = Character().fg
         elif code in range(40, 48):
             self.style.bg = code - 40
+        elif code == 49:
+            self.style.bg = Character().bg
         else:
             print 'unknown sgr', code
 
@@ -344,6 +402,7 @@ class Screen:
         pass # drrr!
 
     def append(self, ch):
+        assert len(ch) == 1
         self._normalize()
         char = self._data[self.y][self.x]
         char.ch = ch
@@ -353,14 +412,14 @@ class Screen:
     def scroll(self, n=1):
         if n > 0:
             for i in xrange(n):
-                self.clear_line(0)
-                first_line = self._data.pop(0)
-                self._data.append(first_line)
+                self.clear_line(self.scroll_start)
+                first_line = self._data.pop(self.scroll_start)
+                self._data.insert(self.scroll_end, first_line)
         elif n < 0:
-            for i in xrange(n):
-                self.clear_line(self.rows - 1)
-                last_line = self._data.pop()
-                self._data.insert(0, last_line)
+            for i in xrange(-n):
+                self.clear_line(self.scroll_end)
+                last_line = self._data.pop(self.scroll_end)
+                self._data.insert(self.scroll_start, last_line)
 
     def _normalize(self):
         if self.y < 0:
@@ -376,6 +435,20 @@ class Screen:
         if self.y >= self.rows:
             self.y = self.rows - 1
             self.scroll(n=1)
+
+        if self.scroll_start < 0:
+            self.scroll_start = 0
+        elif self.scroll_start >= self.rows:
+            self.scroll_start = self.rows - 1
+
+        if self.scroll_end < 0:
+            self.scroll_end = 0
+        elif self.scroll_end >= self.rows:
+            self.scroll_end = self.rows - 1
+
+        if self.scroll_end < self.scroll_start:
+            self.scroll_end = self.scroll_start
+
 
     def __iter__(self):
         return iter(self._data)
@@ -457,6 +530,9 @@ class StringReader:
 
 class Character:
     def __init__(self):
+        self.reset()
+
+    def reset(self):
         self.ch = ' '
         self.bg = 0
         self.fg = 7
