@@ -1,10 +1,40 @@
-#include <pty.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/wait.h>
+#include <sys/ioctl.h>
+#include <termios.h>
 
 // fcntl(descr, F_SETFL, O_NONBLOCK)
+
+int forkpty(int* master, void* _pad0, void* _pad1, struct winsize* wsize) {
+  // TODO: error checking
+  int ptm = open("/dev/ptmx", O_RDWR);
+  if(ptm < 0)
+    return -1;
+  fcntl(ptm, F_SETFD, FD_CLOEXEC);
+  grantpt(ptm);
+  unlockpt(ptm);
+  if(wsize)
+    ioctl(ptm, TIOCSWINSZ, wsize);
+  char devname[1024];
+  ptsname_r(ptm, devname, sizeof(devname));
+  int pid;
+  if((pid=fork()) == 0) {
+    setsid();
+    int pts = open(devname, O_RDWR);
+    if(pts < 0) return -1;
+    dup2(pts, 0);
+    dup2(pts, 1);
+    dup2(pts, 2);
+    close(ptm);
+    return 0;
+  } else {
+    *master = ptm;
+    return pid;
+  }
+}
 
 int main(int argc, char** argv) {
   if(argc < 2) {
@@ -17,7 +47,12 @@ int main(int argc, char** argv) {
   struct winsize wsize;
   wsize.ws_row = atoi(getenv("ROWS"));
   wsize.ws_col = atoi(getenv("COLS"));
-  if((pid=forkpty(&master, NULL, NULL, &wsize))) {
+  pid=forkpty(&master, NULL, NULL, &wsize);
+  if(pid < 0) {
+    perror("forkpty");
+    exit(1);
+  }
+  if(pid != 0) {
     /* TODO: read/write in blocks >1byte */
     while(1) {
       fd_set rfds;

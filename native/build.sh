@@ -68,7 +68,7 @@ echo
 
 if [ ! -f "build/busybox-arm" ]; then
     progress "  downloading BusyBox binary"
-    trimout wget --progress=dot http://busybox.net/downloads/binaries/1.19.0/busybox-armv5l -o build/busybox-arm || die
+    trimout wget --progress=dot http://busybox.net/downloads/binaries/1.19.0/busybox-armv5l -O build/busybox-arm || die
     end_progress
 else
     echo "  BusyBox binary aleardy downloaded"

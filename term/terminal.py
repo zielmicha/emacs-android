@@ -22,23 +22,26 @@ class Terminal:
         self.is_ctrl = False
         self.is_shift = False
 
-    def main(self):
-        self.init_subprocess()
+    def main(self, args, ptyhelper='./pty-helper'):
+        self.init_subprocess(args, ptyhelper)
+        self.init_graphics()
         self.init_window()
         while True:
             self.tick()
 
-    def init_window(self):
+    def init_graphics(self):
         pygame.init()
         pygame.key.set_repeat(100, 50)
-        self.surf = pygame.display.set_mode((self.cols * self.char_w, self.rows * self.char_h))
         self.font = pygame.font.Font('FreeMono.ttf', self.char_h + 1)
 
-    def init_subprocess(self):
+    def init_window(self):
+        self.surf = pygame.display.set_mode((self.cols * self.char_w, self.rows * self.char_h))
+
+    def init_subprocess(self, args, ptyhelper):
         os.environ['COLS'] = str(self.cols)
         os.environ['ROWS'] = str(self.rows)
         os.environ['TERM'] = 'vt100'
-        process = subprocess.Popen(['./pty-helper'] + sys.argv[1:],
+        process = subprocess.Popen([ptyhelper] + args,
                                    stdout=subprocess.PIPE,
                                    stdin=subprocess.PIPE)
         self.stdin_fd = process.stdin.fileno()
@@ -545,4 +548,4 @@ class Character:
 
 if __name__ == '__main__':
     t = Terminal()
-    t.main()
+    t.main(sys.argv[1:])
