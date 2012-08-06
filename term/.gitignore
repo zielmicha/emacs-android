@@ -1,6 +1,0 @@
-/pty-helper
-*.pyo
-/build
-/AndroidManifest.xml
-/pty-helper.android
-*.pyc
