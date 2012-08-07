@@ -1,6 +1,5 @@
 This is Emacs port for Android.
-
-It works, but for now you have to run it through ConnectBot.
+This repo contains only build scripts.
 
 Building
 =============
@@ -12,9 +11,9 @@ Building
 Installation
 =============
 
-   git clone https://github.com/zielmicha/emacs-android-app.git
-   cd emacs-android-app
-   ant debug install
+    git clone https://github.com/zielmicha/emacs-android-app.git
+    cd emacs-android-app
+    ant debug install
 
 Setting up mirror
 ============
