@@ -26,7 +26,8 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
    <datadir>/emacs/VERSION/lisp:<datadir>/emacs/VERSION/leim
    where datadir is eg /usr/local/share.
 */
-#define PATH_LOADSEARCH "/sdcard/emacs/share/emacs/24.1.50/lisp:/sdcard/emacs/share/emacs/24.1.50/leim"
+/* NOTICE: there has to be at least one : */
+#define PATH_LOADSEARCH "/sdcard/emacs/lisp:/sdcard/emacs/leim"
 
 
 /* Like PATH_LOADSEARCH, but contains the non-standard pieces.
@@ -37,7 +38,8 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
    This is combined with PATH_LOADSEARCH to make the default load-path.
    If the --no-site-lisp option is used, this piece is excluded.
 */
-#define PATH_SITELOADSEARCH "/sdcard/emacs/share/emacs/24.1.50/site-lisp:/sdcard/emacs/share/emacs/site-lisp"
+/* NOTICE: there has to be at least one : */
+#define PATH_SITELOADSEARCH "/sdcard/emacs/site-lisp:/sdcard/emacs/site-leim"
 
 
 /* Like PATH_LOADSEARCH, but used only during the build process
@@ -51,12 +53,12 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
    variable exec-path and the first file name in it sets the Lisp
    variable exec-directory.  exec-directory is used for finding
    executables and other architecture-dependent files.  */
-#define PATH_EXEC "/sdcard/emacs/libexec/emacs/24.1.50/x86_64-unknown-linux-gnu"
+#define PATH_EXEC "/sdcard/emacs/libexec"
 
 /* Where Emacs should look for its architecture-independent data
    files, like the NEWS file.  The lisp variable data-directory
    is set to this value.  */
-#define PATH_DATA "/sdcard/emacs/share/emacs/24.1.50/etc"
+#define PATH_DATA "/sdcard/emacs/etc"
 
 /* Where Emacs should look for X bitmap files.
    The lisp variable x-bitmap-file-path is set based on this value.  */
@@ -64,7 +66,7 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 
 /* Where Emacs should look for its docstring file.  The lisp variable
    doc-directory is set to this value.  */
-#define PATH_DOC "/sdcard/emacs/share/emacs/24.1.50/etc"
+#define PATH_DOC "/sdcard/emacs/etc"
 
 /* Where the configuration process believes the info tree lives.  The
    lisp variable configure-info-directory gets its value from this
@@ -72,7 +74,7 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 #define PATH_INFO "/sdcard/emacs/share/info"
 
 /* Where Emacs should store game score files.  */
-#define PATH_GAME "/sdcard/emacs/var/games/emacs"
+#define PATH_GAME "/sdcard/emacs/games"
 
 /* Where Emacs should look for the application default file. */
 #define PATH_X_DEFAULTS ""

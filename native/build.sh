@@ -76,16 +76,16 @@ fi
 
 progress "  packaging Lisp modules"
 cd build/host || die
-trimout tar cvzf ../lisp.tgz lisp || die
+trimout $base/tar_lzma.sh ../lisp.tlzma lisp || die
 end_progress
 cd ../..
 
 progress "  packaging etc"
 cd emacs-src || die
-trimout tar cvzf ../build/etc.tgz etc || die
+trimout $base/tar_lzma.sh ../build/etc.tlzma etc || die
 end_progress
 cd ..
 
 progress "  packaging terminfo"
-trimout tar czvf build/terminfo.tgz terminfo || doe
+trimout $base/tar_lzma.sh build/terminfo.tlzma terminfo || doe
 end_progress
