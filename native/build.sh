@@ -87,5 +87,5 @@ end_progress
 cd ..
 
 progress "  packaging terminfo"
-trimout $base/tar_lzma.sh build/terminfo.tlzma terminfo || doe
+trimout $base/tar_lzma.sh build/terminfo.tlzma terminfo || die
 end_progress
